@@ -3,9 +3,9 @@ from scipy import integrate
 from galpy import potential
 from galpy.util import bovy_plot, bovy_conversion
 from matplotlib import pyplot
-_REFR0, _REFV0= 8.2, 224.
-def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,
-              dblexp,_REFR0,_REFV0):
+_REFR0, _REFV0= 8., 220.
+def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,fitvoro,
+              dblexp):
     #Check ranges
     if params[0] < 0. or params[0] > 1.: return numpy.finfo(numpy.dtype(numpy.float64)).max
     if params[1] < 0. or params[1] > 1.: return numpy.finfo(numpy.dtype(numpy.float64)).max
@@ -14,16 +14,24 @@ def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,
         return numpy.finfo(numpy.dtype(numpy.float64)).max
     if params[3] < numpy.log(0.05/_REFR0) or params[3] > numpy.log(1./_REFR0):
         return numpy.finfo(numpy.dtype(numpy.float64)).max
-    if fitc and (params[7] <= 0. or params[7] > 4.):
+    if fitvoro and (params[7] <= 150./_REFV0 or params[7] > 290./_REFV0):
         return numpy.finfo(numpy.dtype(numpy.float64)).max
+    if fitvoro and (params[8] <= 7./_REFR0 or params[8] > 9.4/_REFR0):
+        return numpy.finfo(numpy.dtype(numpy.float64)).max
+    if fitc and (params[7+2*fitvoro] <= 0. or params[7+2*fitvoro] > 4.):
+        return numpy.finfo(numpy.dtype(numpy.float64)).max
+    if fitvoro:
+        ro, vo= _REFR0*params[8], _REFV0*params[7]
+    else:
+        ro, vo= _REFR0, _REFV0
     #Setup potential
-    pot= setup_potential(params,c,fitc,dblexp,_REFR0,_REFV0)
+    pot= setup_potential(params,c,fitc,dblexp,ro,vo)
     #Calculate model surface density at surfrs
     modelkzs= numpy.empty_like(surfrs)
     for ii in range(len(surfrs)):
         modelkzs[ii]= -potential.evaluatezforces(pot,
-                                                 (_REFR0-8.+surfrs[ii])/_REFR0,
-                                                 1.1/_REFR0)*bovy_conversion.force_in_2piGmsolpc2(_REFV0,_REFR0)
+                                                 (ro-8.+surfrs[ii])/ro,
+                                                 1.1/ro)*bovy_conversion.force_in_2piGmsolpc2(vo,ro)
     out= 0.5*numpy.sum((kzs-modelkzs)**2./kzerrs**2.)
     #Add terminal velocities
     vrsun= params[5]
@@ -40,50 +48,50 @@ def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,
         mc_vterm_model[ii]= potential.vterm(pot,mc_glon[ii])
     mc_vterm_model+= vrsun*numpy.cos(mc_glon/180.*numpy.pi)\
         -vtsun*numpy.sin(mc_glon/180.*numpy.pi)
-    cl_dvterm= (cl_vterm-cl_vterm_model)/termsigma*_REFV0
-    mc_dvterm= (mc_vterm-mc_vterm_model)/termsigma*_REFV0
+    cl_dvterm= (cl_vterm-cl_vterm_model*vo)/termsigma
+    mc_dvterm= (mc_vterm-mc_vterm_model*vo)/termsigma
     out+= 0.5*numpy.sum(cl_dvterm*numpy.dot(cl_corr,cl_dvterm))
     out+= 0.5*numpy.sum(mc_dvterm*numpy.dot(mc_corr,mc_dvterm))
     #Rotation curve constraint
     out-= logprior_dlnvcdlnr(potential.dvcircdR(pot,1.))
     #K dwarfs, Kz
-    out+= 0.5*(-potential.evaluatezforces(pot,1.,1.1/_REFR0)*bovy_conversion.force_in_2piGmsolpc2(_REFV0,_REFR0)-67.)**2./36.
+    out+= 0.5*(-potential.evaluatezforces(pot,1.,1.1/ro)*bovy_conversion.force_in_2piGmsolpc2(vo,ro)-67.)**2./36.
     #K dwarfs, visible
-    out+= 0.5*(visible_dens(pot,_REFR0,_REFV0)-55.)**2./25.
+    out+= 0.5*(visible_dens(pot,ro,vo)-55.)**2./25.
     #Local density prior
-    localdens= potential.evaluateDensities(pot,1.,0.)*bovy_conversion.dens_in_msolpc3(_REFV0,_REFR0)
+    localdens= potential.evaluateDensities(pot,1.,0.)*bovy_conversion.dens_in_msolpc3(vo,ro)
     out+= 0.5*(localdens-0.102)**2./0.01**2.
     #Bulge velocity dispersion
-    out+= 0.5*(bulge_dispersion(pot,_REFR0,_REFV0)-117.)**2./225.
+    out+= 0.5*(bulge_dispersion(pot,ro,vo)-117.)**2./225.
     #Mass at 60 kpc
-    out+= 0.5*(mass60(pot,_REFR0,_REFV0)-4.)**2./0.7**2.
-    #Concentration prior?
+    out+= 0.5*(mass60(pot,ro,vo)-4.)**2./0.7**2.
+    # vc and ro measurements: vc=218 +/- 10 km/s, ro= 8.2 +/- 0.1 kpc
+    out+= (vo-218.)**2./200.+(ro-8.2)**2./0.02
     return out
 
 def pdf_func(params,*args):
     return -like_func(params,*args)
 
-def setup_potential(params,c,fitc,dblexp,_REFR0,_REFV0):
+def setup_potential(params,c,fitc,dblexp,ro,vo):
     pot= [potential.PowerSphericalPotentialwCutoff(normalize=1.-params[0]-params[1],
-                                                   alpha=1.8,rc=1.9/_REFR0)]
+                                                   alpha=1.8,rc=1.9/ro)]
     if dblexp:
         pot.append(\
-            potential.DoubleExponentialDiskPotential(normalize=params[0],
-                                                     hr=numpy.exp(params[2]),
-                                                     hz=numpy.exp(params[3])))
+            potential.DoubleExponentialDiskPotential(\
+                normalize=params[0],hr=numpy.exp(params[2])*_REFR0/ro,
+                hz=numpy.exp(params[3])*_REFR0/ro))
     else:
         pot.append(\
             potential.MiyamotoNagaiPotential(normalize=params[0],
-                                             a=numpy.exp(params[2]),
-                                             b=numpy.exp(params[3])))
+                                             a=numpy.exp(params[2])*_REFR0/ro,
+                                             b=numpy.exp(params[3])*_REFR0/ro))
     if fitc:
-        pot.append(potential.TriaxialNFWPotential(normalize=params[1],
-                                                  a=numpy.exp(params[4]),
-                                                  c=params[7]))
+        pot.append(potential.TriaxialNFWPotential(\
+                normalize=params[1],a=numpy.exp(params[4])*_REFR0/ro,
+                c=params[7]))
     else:
-        pot.append(potential.TriaxialNFWPotential(normalize=params[1],
-                                                  a=numpy.exp(params[4]),
-                                                  c=c))
+        pot.append(potential.TriaxialNFWPotential(\
+                normalize=params[1],a=numpy.exp(params[4])*_REFR0/ro,c=c))
     return pot
 
 def mass60(pot,_REFR0,_REFV0):
@@ -167,8 +175,8 @@ def plotTerm(pot,termdata,_REFR0,_REFV0):
     bovy_plot.bovy_plot(pglons,pterms,'-',color='0.6',lw=2.,zorder=0,
                         overplot=True)
     cl_glon,cl_vterm,cl_corr,mc_glon,mc_vterm,mc_corr= termdata
-    bovy_plot.bovy_plot(cl_glon,cl_vterm*_REFV0,'ko',overplot=True)
-    bovy_plot.bovy_plot(mc_glon-360.,mc_vterm*_REFV0,'ko',overplot=True)
+    bovy_plot.bovy_plot(cl_glon,cl_vterm,'ko',overplot=True)
+    bovy_plot.bovy_plot(mc_glon-360.,mc_vterm,'ko',overplot=True)
     return None
 
 def plotPot(pot):
