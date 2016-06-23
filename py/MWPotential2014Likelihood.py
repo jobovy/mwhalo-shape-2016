@@ -3,6 +3,7 @@ from scipy import integrate
 from galpy import potential
 from galpy.util import bovy_plot, bovy_conversion
 from matplotlib import pyplot
+_REFR0, _REFV0= 8.2, 224.
 def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,
               dblexp,_REFR0,_REFV0):
     #Check ranges
@@ -16,8 +17,7 @@ def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,
     if fitc and (params[7] <= 0. or params[7] > 4.):
         return numpy.finfo(numpy.dtype(numpy.float64)).max
     #Setup potential
-    pot= setup_potential(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,
-                         dblexp,_REFR0,_REFV0)
+    pot= setup_potential(params,c,fitc,dblexp,_REFR0,_REFV0)
     #Calculate model surface density at surfrs
     modelkzs= numpy.empty_like(surfrs)
     for ii in range(len(surfrs)):
@@ -63,8 +63,7 @@ def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,
 def pdf_func(params,*args):
     return -like_func(params,*args)
 
-def setup_potential(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,
-              dblexp,_REFR0,_REFV0):
+def setup_potential(params,c,fitc,dblexp,_REFR0,_REFV0):
     pot= [potential.PowerSphericalPotentialwCutoff(normalize=1.-params[0]-params[1],
                                                    alpha=1.8,rc=1.9/_REFR0)]
     if dblexp:
