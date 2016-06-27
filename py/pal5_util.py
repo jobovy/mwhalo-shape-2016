@@ -84,7 +84,7 @@ def predict_pal5obs(pot_params,c,
     """
     # First compute the model for all cs at which we will interpolate
     if singlec:
-        interpcs= [singlec]
+        interpcs= [c]
     elif interpcs is None:
         interpcs= [0.5,0.75,1.,1.25,1.55,1.75,2.,2.25,2.5,2.75,3.]
     else:
