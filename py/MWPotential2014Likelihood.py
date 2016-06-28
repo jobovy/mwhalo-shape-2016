@@ -72,7 +72,7 @@ def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,fitvoro,
 def pdf_func(params,*args):
     return -like_func(params,*args)
 
-def setup_potential(params,c,fitc,dblexp,ro,vo):
+def setup_potential(params,c,fitc,dblexp,ro,vo,b=1.):
     pot= [potential.PowerSphericalPotentialwCutoff(normalize=1.-params[0]-params[1],
                                                    alpha=1.8,rc=1.9/ro)]
     if dblexp:
@@ -88,10 +88,10 @@ def setup_potential(params,c,fitc,dblexp,ro,vo):
     if fitc:
         pot.append(potential.TriaxialNFWPotential(\
                 normalize=params[1],a=numpy.exp(params[4])*_REFR0/ro,
-                c=params[7]))
+                c=params[7],b=b))
     else:
         pot.append(potential.TriaxialNFWPotential(\
-                normalize=params[1],a=numpy.exp(params[4])*_REFR0/ro,c=c))
+                normalize=params[1],a=numpy.exp(params[4])*_REFR0/ro,c=c,b=b))
     return pot
 
 def mass60(pot,_REFR0,_REFV0):
