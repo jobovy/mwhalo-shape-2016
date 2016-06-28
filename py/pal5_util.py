@@ -1,5 +1,5 @@
 import copy
-import warnings
+import signal
 import numpy
 from scipy import interpolate
 from galpy.actionAngle import actionAngleIsochroneApprox, estimateBIsochrone
@@ -44,7 +44,10 @@ def width_trailing(sdf):
 #    return 2.355*60.*ws
     return 2.355*60.*numpy.mean(ws)
 
-def predict_pal5obs(pot_params,c,
+def timeout_handler(signum, frame):
+    raise Exception("Calculation timed-out")
+
+def predict_pal5obs(pot_params,c,b=1.,pa=0.,
                     sigv=0.4,td=5.,
                     dist=23.2,pmra=-2.296,pmdec=-2.257,vlos=-58.7,
                     ro=_REFR0,vo=_REFV0,
@@ -59,6 +62,8 @@ def predict_pal5obs(pot_params,c,
     INPUT:
        pot_params- array with the parameters of a potential model (see MWPotential2014Likelihood.setup_potential; only the basic parameters of the disk and halo are used, flattening is specified separately)
        c- halo flattening
+       b= (1.) halo-squashed
+       pa= (0.) halo PA
        sigv= (0.4) velocity dispersion in km/s (can be array of same len as interpcs)
        td= (5.) stream age in Gyr (can be array of same len as interpcs)
        dist= (23.2) progenitor distance in kpc
@@ -108,24 +113,37 @@ def predict_pal5obs(pot_params,c,
     if len(interpcs) ==1 or interpcs[1]-interpcs[0] > 0.1:
         tries.extend([0.1,-0.1])
     origic= interpcs[0]
-    while ii < len(interpcs):
+    ninterpcs= len(interpcs)
+    while ii < ninterpcs:
         ic= interpcs[ii]
         pot= MWPotential2014Likelihood.setup_potential(pot_params,ic,
-                                                       False,False,ro,vo)
-        tsdf_trailing, tsdf_leading= setup_sdf(pot,prog,sigv[ii],td[ii],
-                                               ro,vo,multi=multi,isob=isob[ii],
-                                               nTrackChunks=nTrackChunks)
-        # Check for calc. issue: when track starts too high
-        if nt < len(tries) and (bovy_coords.lb_to_radec(\
-            tsdf_trailing._interpolatedObsTrackLB[0,0],
-            tsdf_trailing._interpolatedObsTrackLB[0,1],
-            degree=True)[1] > 0.625 or \
-            bovy_coords.lb_to_radec(\
-            tsdf_trailing._interpolatedObsTrackLB[0,0],
-            tsdf_trailing._interpolatedObsTrackLB[0,1],
-            degree=True)[1] < -0.1):
-            interpcs[ii]= origic+tries[nt]
-            nt+= 1
+                                                       False,False,ro,vo,
+                                                       b=b,pa=pa)
+        success= True
+        # Make sure this doesn't run forever
+        signal.signal(signal.SIGALRM,timeout_handler)
+        signal.alarm(600)
+        try:
+            tsdf_trailing, tsdf_leading= setup_sdf(pot,prog,sigv[ii],td[ii],
+                                                   ro,vo,multi=multi,
+                                                   isob=isob[ii],
+                                                   nTrackChunks=nTrackChunks)
+        except:
+            # Catches errors and time-outs
+            success= False
+        signal.alarm(0)
+        # Check for calc. issues
+        if not success or looks_funny(tsdf_trailing,tsdf_leading):
+            if nt < len(tries):
+                interpcs[ii]= origic+tries[nt]
+                nt+= 1
+            else:
+                print "Dumping %.2f" % ic
+                interpcs.remove(ic)
+                ninterpcs-= 1
+                nt= 0
+                if ii < ninterpcs: origic= interpcs[ii]
+                print interpcs, ninterpcs
         else:
             ii+= 1
             nt= 0
@@ -184,38 +202,67 @@ def predict_pal5obs(pot_params,c,
         interpk= numpy.amin([len(interpcs)-1,3])
     for ii in range(sdf_trailing_varyc[0].nInterpolatedTrackChunks):
         ip= interpolate.InterpolatedUnivariateSpline(\
-            interpcs,trackRADec_trailing[:,ii,0],k=interpk)
+            interpcs,trackRADec_trailing[:,ii,0],k=interpk,ext=0)
         trackRADec_trailing_out[:,ii,0]= ip(c)
         ip= interpolate.InterpolatedUnivariateSpline(\
-            interpcs,trackRADec_trailing[:,ii,1],k=interpk)
+            interpcs,trackRADec_trailing[:,ii,1],k=interpk,ext=0)
         trackRADec_trailing_out[:,ii,1]= ip(c)
         ip= interpolate.InterpolatedUnivariateSpline(\
-            interpcs,trackRAVlos_trailing[:,ii,0],k=interpk)
+            interpcs,trackRAVlos_trailing[:,ii,0],k=interpk,ext=0)
         trackRAVlos_trailing_out[:,ii,0]= ip(c)
         ip= interpolate.InterpolatedUnivariateSpline(\
-            interpcs,trackRAVlos_trailing[:,ii,1],k=interpk)
+            interpcs,trackRAVlos_trailing[:,ii,1],k=interpk,ext=0)
         trackRAVlos_trailing_out[:,ii,1]= ip(c)
         ip= interpolate.InterpolatedUnivariateSpline(\
-            interpcs,trackRADec_leading[:,ii,0],k=interpk)
+            interpcs,trackRADec_leading[:,ii,0],k=interpk,ext=0)
         trackRADec_leading_out[:,ii,0]= ip(c)
         ip= interpolate.InterpolatedUnivariateSpline(\
-            interpcs,trackRADec_leading[:,ii,1],k=interpk)
+            interpcs,trackRADec_leading[:,ii,1],k=interpk,ext=0)
         trackRADec_leading_out[:,ii,1]= ip(c)
         ip= interpolate.InterpolatedUnivariateSpline(\
-            interpcs,trackRAVlos_leading[:,ii,0],k=interpk)
+            interpcs,trackRAVlos_leading[:,ii,0],k=interpk,ext=0)
         trackRAVlos_leading_out[:,ii,0]= ip(c)
         ip= interpolate.InterpolatedUnivariateSpline(\
-            interpcs,trackRAVlos_leading[:,ii,1],k=interpk)
+            interpcs,trackRAVlos_leading[:,ii,1],k=interpk,ext=0)
         trackRAVlos_leading_out[:,ii,1]= ip(c)
     ip= interpolate.InterpolatedUnivariateSpline(\
-        interpcs,width,k=interpk)
+        interpcs,width,k=interpk,ext=0)
     width_out= ip(c)
     ip= interpolate.InterpolatedUnivariateSpline(\
-        interpcs,length,k=interpk)
+        interpcs,length,k=interpk,ext=0)
     length_out= ip(c)
     return (trackRADec_trailing_out,trackRADec_leading_out,
             trackRAVlos_trailing_out,trackRAVlos_leading_out,
             width_out,length_out,interpcs)
+
+def looks_funny(tsdf_trailing,tsdf_leading):
+    radecs_trailing=\
+        bovy_coords.lb_to_radec(tsdf_trailing._interpolatedObsTrackLB[:,0],
+                                tsdf_trailing._interpolatedObsTrackLB[:,1],
+                                degree=True)
+    radecs_leading=\
+        bovy_coords.lb_to_radec(tsdf_leading._interpolatedObsTrackLB[:,0],
+                                tsdf_leading._interpolatedObsTrackLB[:,1],
+                                degree=True)
+    if radecs_trailing[0,1] > 0.625:
+        return True
+    elif radecs_trailing[0,1] < -0.1:
+        return True
+    elif numpy.fabs(tsdf_trailing._dOdJpEig[0][2]\
+                        /tsdf_trailing._dOdJpEig[0][1]) < 0.05:
+        return True
+    elif numpy.any((numpy.roll(radecs_trailing[:,0],-1)-radecs_trailing[:,0])\
+                       [(radecs_trailing[:,0] < 250.)\
+                            *(radecs_trailing[:,1] > -1.)\
+                            *(radecs_trailing[:,1] < 10.)] < 0.):
+        return True
+    elif numpy.any((numpy.roll(radecs_leading[:,0],-1)-radecs_leading[:,0])\
+                       [(radecs_leading[:,0] > 225.)\
+                            *(radecs_leading[:,1] > -4.5)\
+                            *(radecs_leading[:,1] < 0.)] > 0.):
+        return True
+    else:
+        return False
 
 def pal5_lnlike(pos_radec,rvel_ra,
                 trackRADec_trailing,trackRADec_leading,
@@ -259,21 +306,35 @@ def pal5_lnlike(pos_radec,rvel_ra,
                               /rvel_ra[tindx,2]**2.)
         out[nn,3]= width_out[nn]
         out[nn,4]= length_out[nn]
+    out[numpy.isnan(out[:,0])]= -1000000000000000000.
+    out[numpy.isnan(out[:,1])]= -1000000000000000000.
+    out[numpy.isnan(out[:,2])]= -1000000000000000000.
     return out
 
 def setup_sdf(pot,prog,sigv,td,ro,vo,multi=None,nTrackChunks=8,isob=None):
     if isob is None:
         # Determine good one
         ts= numpy.linspace(0.,150.,1001)
+        # Hack!
+        epot= copy.deepcopy(pot)
+        epot[2]._b= 1.
+        epot[2]._b2= 1.
+        epot[2]._isNonAxi= False
+        epot[2]._aligned= True
         prog.integrate(ts,pot)
-        estb= estimateBIsochrone(pot,
+        estb= estimateBIsochrone(epot,
                                  prog.R(ts,use_physical=False),
-                                 prog.z(ts,use_physical=False))
+                                 prog.z(ts,use_physical=False),
+                                 phi=prog.phi(ts,use_physical=False))
         if estb[1] < 0.3: isob= 0.3
         elif estb[1] > 1.5: isob= 1.5
         else: isob= estb[1]
     print(pot[2]._c, isob)
-    aAI= actionAngleIsochroneApprox(pot=pot,b=isob)
+    if numpy.fabs(pot[2]._b-1.) > 0.05:
+        aAI= actionAngleIsochroneApprox(pot=pot,b=isob,tintJ=1000.,
+                                        ntintJ=30000)
+    else:
+        aAI= actionAngleIsochroneApprox(pot=pot,b=isob)
     try:
         sdf_trailing=\
             streamdf(sigv/vo,progenitor=prog,pot=pot,aA=aAI,
