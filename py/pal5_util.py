@@ -111,7 +111,7 @@ def predict_pal5obs(pot_params,c,b=1.,pa=0.,
     nt= 0
     tries= [0.05,-0.05]
     if len(interpcs) ==1 or interpcs[1]-interpcs[0] > 0.1:
-        tries.extend([0.1,-0.1])
+        tries.extend([0.095,-0.095]) # so we don't overlap with 0.1 spacing grids
     origic= interpcs[0]
     ninterpcs= len(interpcs)
     while ii < ninterpcs:
@@ -122,7 +122,7 @@ def predict_pal5obs(pot_params,c,b=1.,pa=0.,
         success= True
         # Make sure this doesn't run forever
         signal.signal(signal.SIGALRM,timeout_handler)
-        signal.alarm(600)
+        signal.alarm(120)
         try:
             tsdf_trailing, tsdf_leading= setup_sdf(pot,prog,sigv[ii],td[ii],
                                                    ro,vo,multi=multi,
@@ -151,6 +151,14 @@ def predict_pal5obs(pot_params,c,b=1.,pa=0.,
             # Add to the list
             sdf_trailing_varyc.append(tsdf_trailing)
             sdf_leading_varyc.append(tsdf_leading)
+    if len(sdf_trailing_varyc) == 0:
+        # Everything bad!!
+        return (numpy.zeros((len(c),1001,2)),
+                numpy.zeros((len(c),1001,2)),
+                numpy.zeros((len(c),1001,2)),
+                numpy.zeros((len(c),1001,2)),
+                numpy.zeros((len(c))),
+                numpy.zeros((len(c))),[])
     # Compute the track properties for each model
     trackRADec_trailing= numpy.empty((len(interpcs),
                                       sdf_trailing_varyc[0]\
@@ -260,6 +268,11 @@ def looks_funny(tsdf_trailing,tsdf_leading):
                        [(radecs_leading[:,0] > 225.)\
                             *(radecs_leading[:,1] > -4.5)\
                             *(radecs_leading[:,1] < 0.)] > 0.):
+        return True
+    elif numpy.isnan(width_trailing(tsdf_trailing)):
+        return True
+    elif numpy.isnan(tsdf_trailing.length(ang=True,coord='customra',
+                                          threshold=0.3)):
         return True
     else:
         return False
