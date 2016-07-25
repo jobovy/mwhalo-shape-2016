@@ -57,7 +57,7 @@ def predict_pal5obs(pot_params,c,b=1.,pa=0.,
                     singlec=False,
                     interpcs=None,interpk=None,
                     isob=None,nTrackChunks=8,multi=None,
-                    trailing_only=False,useTM=True,
+                    trailing_only=False,useTM=False,
                     verbose=True):
     """
     NAME:
@@ -116,12 +116,9 @@ def predict_pal5obs(pot_params,c,b=1.,pa=0.,
     sdf_trailing_varyc= []
     sdf_leading_varyc= []
     ii= 0
-    nt= 0
-    tries= [0.05,-0.05]
-    if len(interpcs) ==1 or interpcs[1]-interpcs[0] > 0.1:
-        tries.extend([0.095,-0.095]) # so we don't overlap with 0.1 spacing grids
-    origic= interpcs[0]
     ninterpcs= len(interpcs)
+    this_useTM= useTM
+    this_nTrackChunks= nTrackChunks
     while ii < ninterpcs:
         ic= interpcs[ii]
         pot= MWPotential2014Likelihood.setup_potential(pot_params,ic,
@@ -135,29 +132,25 @@ def predict_pal5obs(pot_params,c,b=1.,pa=0.,
             tsdf_trailing, tsdf_leading= setup_sdf(pot,prog,sigv[ii],td[ii],
                                                    ro,vo,multi=multi,
                                                    isob=isob[ii],
-                                                   nTrackChunks=nTrackChunks,
+                                                   nTrackChunks=this_nTrackChunks,
                                                    trailing_only=trailing_only,
-                                                   verbose=verbose,useTM=useTM)
+                                                   verbose=verbose,
+                                                   useTM=this_useTM)
         except:
             # Catches errors and time-outs
             success= False
         signal.alarm(0)
         # Check for calc. issues
-        if not success:# or looks_funny(tsdf_trailing,tsdf_leading):
-            if nt < len(tries):
-                interpcs[ii]= origic+tries[nt]
-                nt+= 1
-            else:
-                if verbose: print "Dumping %.2f" % ic
-                interpcs.remove(ic)
-                ninterpcs-= 1
-                nt= 0
-                if ii < ninterpcs: origic= interpcs[ii]
-                if verbose: print interpcs, ninterpcs
+        if not success or \
+                (not this_useTM and looks_funny(tsdf_trailing,tsdf_leading)):
+            # Try again with TM
+            this_useTM= True
+            this_nTrackChunks= 21 # might as well
         else:
             ii+= 1
-            nt= 0
-            if ii < len(interpcs): origic= interpcs[ii]
+            # reset
+            this_useTM= useTM
+            this_nTrackChunks= nTrackChunks
             # Add to the list
             sdf_trailing_varyc.append(tsdf_trailing)
             sdf_leading_varyc.append(tsdf_leading)
@@ -261,10 +254,11 @@ def looks_funny(tsdf_trailing,tsdf_leading):
         bovy_coords.lb_to_radec(tsdf_trailing._interpolatedObsTrackLB[:,0],
                                 tsdf_trailing._interpolatedObsTrackLB[:,1],
                                 degree=True)
-    radecs_leading=\
-        bovy_coords.lb_to_radec(tsdf_leading._interpolatedObsTrackLB[:,0],
-                                tsdf_leading._interpolatedObsTrackLB[:,1],
-                                degree=True)
+    if not tsdf_leading is None:
+        radecs_leading=\
+            bovy_coords.lb_to_radec(tsdf_leading._interpolatedObsTrackLB[:,0],
+                                    tsdf_leading._interpolatedObsTrackLB[:,1],
+                                    degree=True)
     try:
         if radecs_trailing[0,1] > 0.625:
             return True
@@ -275,10 +269,11 @@ def looks_funny(tsdf_trailing,tsdf_leading):
                                 *(radecs_trailing[:,1] > -1.)\
                                 *(radecs_trailing[:,1] < 10.)] < 0.):
             return True
-        elif numpy.any((numpy.roll(radecs_leading[:,0],-1)-radecs_leading[:,0])\
-                           [(radecs_leading[:,0] > 225.)\
-                                *(radecs_leading[:,1] > -4.5)\
-                                *(radecs_leading[:,1] < 0.)] > 0.):
+        elif not tsdf_leading is None and \
+                numpy.any((numpy.roll(radecs_leading[:,0],-1)-radecs_leading[:,0])\
+                              [(radecs_leading[:,0] > 225.)\
+                                   *(radecs_leading[:,1] > -4.5)\
+                                   *(radecs_leading[:,1] < 0.)] > 0.):
             return True
         elif False:#numpy.isnan(width_trailing(tsdf_trailing)):
             return True
