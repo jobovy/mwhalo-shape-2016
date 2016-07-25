@@ -1,11 +1,11 @@
 import numpy
 from scipy import integrate
 from galpy import potential
-from galpy.util import bovy_plot, bovy_conversion
+from galpy.util import bovy_plot, bovy_conversion, bovy_coords
 from matplotlib import pyplot
 _REFR0, _REFV0= 8., 220.
 def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,fitvoro,
-              dblexp):
+              dblexp,addpal5,ro,vo):
     #Check ranges
     if params[0] < 0. or params[0] > 1.: return numpy.finfo(numpy.dtype(numpy.float64)).max
     if params[1] < 0. or params[1] > 1.: return numpy.finfo(numpy.dtype(numpy.float64)).max
@@ -22,8 +22,6 @@ def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,fitvoro,
         return numpy.finfo(numpy.dtype(numpy.float64)).max
     if fitvoro:
         ro, vo= _REFR0*params[8], _REFV0*params[7]
-    else:
-        ro, vo= _REFR0, _REFV0
     #Setup potential
     pot= setup_potential(params,c,fitc,dblexp,ro,vo)
     #Calculate model surface density at surfrs
@@ -31,7 +29,8 @@ def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,fitvoro,
     for ii in range(len(surfrs)):
         modelkzs[ii]= -potential.evaluatezforces(pot,
                                                  (ro-8.+surfrs[ii])/ro,
-                                                 1.1/ro)*bovy_conversion.force_in_2piGmsolpc2(vo,ro)
+                                                 1.1/ro,
+                                                 phi=0.)*bovy_conversion.force_in_2piGmsolpc2(vo,ro)
     out= 0.5*numpy.sum((kzs-modelkzs)**2./kzerrs**2.)
     #Add terminal velocities
     vrsun= params[5]
@@ -53,18 +52,23 @@ def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,fitvoro,
     out+= 0.5*numpy.sum(cl_dvterm*numpy.dot(cl_corr,cl_dvterm))
     out+= 0.5*numpy.sum(mc_dvterm*numpy.dot(mc_corr,mc_dvterm))
     #Rotation curve constraint
-    out-= logprior_dlnvcdlnr(potential.dvcircdR(pot,1.))
+    out-= logprior_dlnvcdlnr(potential.dvcircdR(pot,1.,phi=0.))
     #K dwarfs, Kz
-    out+= 0.5*(-potential.evaluatezforces(pot,1.,1.1/ro)*bovy_conversion.force_in_2piGmsolpc2(vo,ro)-67.)**2./36.
+    out+= 0.5*(-potential.evaluatezforces(pot,1.,1.1/ro,phi=0.)*bovy_conversion.force_in_2piGmsolpc2(vo,ro)-67.)**2./36.
     #K dwarfs, visible
     out+= 0.5*(visible_dens(pot,ro,vo)-55.)**2./25.
     #Local density prior
-    localdens= potential.evaluateDensities(pot,1.,0.)*bovy_conversion.dens_in_msolpc3(vo,ro)
+    localdens= potential.evaluateDensities(pot,1.,0.,phi=0.)*bovy_conversion.dens_in_msolpc3(vo,ro)
     out+= 0.5*(localdens-0.102)**2./0.01**2.
     #Bulge velocity dispersion
     out+= 0.5*(bulge_dispersion(pot,ro,vo)-117.)**2./225.
     #Mass at 60 kpc
     out+= 0.5*(mass60(pot,ro,vo)-4.)**2./0.7**2.
+    #Pal5
+    if addpal5:
+        fp5= force_pal5(pot,23.46,ro,vo)
+        out+= (fp5[0]+0.88)**2./0.03**2.
+        out+= (fp5[1]+1.85)**2./0.05**2.
     # vc and ro measurements: vc=218 +/- 10 km/s, ro= 8.2 +/- 0.1 kpc
     out+= (vo-218.)**2./200.+(ro-8.2)**2./0.02
     return out
@@ -72,7 +76,7 @@ def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,fitvoro,
 def pdf_func(params,*args):
     return -like_func(params,*args)
 
-def setup_potential(params,c,fitc,dblexp,ro,vo,b=1.):
+def setup_potential(params,c,fitc,dblexp,ro,vo,b=1.,pa=0.):
     pot= [potential.PowerSphericalPotentialwCutoff(normalize=1.-params[0]-params[1],
                                                    alpha=1.8,rc=1.9/ro)]
     if dblexp:
@@ -88,28 +92,42 @@ def setup_potential(params,c,fitc,dblexp,ro,vo,b=1.):
     if fitc:
         pot.append(potential.TriaxialNFWPotential(\
                 normalize=params[1],a=numpy.exp(params[4])*_REFR0/ro,
-                c=params[7],b=b))
+                c=params[7],b=b,pa=pa))
     else:
         pot.append(potential.TriaxialNFWPotential(\
-                normalize=params[1],a=numpy.exp(params[4])*_REFR0/ro,c=c,b=b))
+                normalize=params[1],a=numpy.exp(params[4])*_REFR0/ro,
+                c=c,b=b,pa=pa))
     return pot
+
+def force_pal5(pot,dpal5,ro,vo):
+    """Return the force at Pal5"""
+    # First compute the location based on the distance
+    l5, b5= bovy_coords.radec_to_lb(229.018,-0.124,degree=True)
+    X5,Y5,Z5= bovy_coords.lbd_to_XYZ(l5,b5,dpal5,degree=True)
+    R5,p5,Z5= bovy_coords.XYZ_to_galcencyl(X5,Y5,Z5,Xsun=ro,Zsun=0.025)
+    return (potential.evaluateRforces(pot,R5/ro,Z5/ro,phi=p5,
+                                      use_physical=True,ro=ro,vo=vo),
+            potential.evaluatezforces(pot,R5/ro,Z5/ro,phi=p5,
+                                      use_physical=True,ro=ro,vo=vo),
+            potential.evaluatephiforces(pot,R5/ro,Z5/ro,phi=p5,
+                                        use_physical=True,ro=ro,vo=vo))
 
 def mass60(pot,_REFR0,_REFV0):
     """The mass at 60 kpc in 10^11 msolar"""
     tR= 60./_REFR0
     # Average r^2 FR/G
-    return -integrate.quad(lambda x: tR**2.*potential.evaluaterforces(pot,tR*x,tR*numpy.sqrt(1.-x**2.)),
+    return -integrate.quad(lambda x: tR**2.*potential.evaluaterforces(pot,tR*x,tR*numpy.sqrt(1.-x**2.),phi=0.),
                            0.,1.)[0]\
                            *bovy_conversion.mass_in_1010msol(_REFV0,_REFR0)/10.
 
 def bulge_dispersion(pot,_REFR0,_REFV0):
     """The expected dispersion in Baade's window, in km/s"""
     bar, baz= 0.0175, 0.068
-    return numpy.sqrt(1./pot[0].dens(bar,baz)*integrate.quad(lambda x: -potential.evaluatezforces(pot,bar,x)*pot[0].dens(bar,x),baz,numpy.inf)[0])*_REFV0
+    return numpy.sqrt(1./pot[0].dens(bar,baz)*integrate.quad(lambda x: -potential.evaluatezforces(pot,bar,x,phi=0.)*pot[0].dens(bar,x),baz,numpy.inf)[0])*_REFV0
 
 def visible_dens(pot,_REFR0,_REFV0,r=1.):
     """The visible surface density at 8 kpc from the center"""
-    return 2.*integrate.quad((lambda zz: potential.evaluateDensities(pot[1],r,zz)),0.,2.)[0]*bovy_conversion.surfdens_in_msolpc2(_REFV0,_REFR0)
+    return 2.*integrate.quad((lambda zz: potential.evaluateDensities(pot[1],r,zz,phi=0.)),0.,2.)[0]*bovy_conversion.surfdens_in_msolpc2(_REFV0,_REFR0)
 
 def logprior_dlnvcdlnr(dlnvcdlnr):
     sb= 0.04
