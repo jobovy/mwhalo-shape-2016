@@ -23,7 +23,7 @@ def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,fitvoro,
     if fitvoro:
         ro, vo= _REFR0*params[8], _REFV0*params[7]
     #Setup potential
-    pot= setup_potential(params,c,fitc,dblexp,ro,vo)
+    pot= setup_potential(params,c,fitc,dblexp,ro,vo,fitvoro=fitvoro)
     #Calculate model surface density at surfrs
     modelkzs= numpy.empty_like(surfrs)
     for ii in range(len(surfrs)):
@@ -66,9 +66,9 @@ def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,fitvoro,
     out+= 0.5*(mass60(pot,ro,vo)-4.)**2./0.7**2.
     #Pal5
     if addpal5:
+        # q = 0.94 +/- 0.05
         fp5= force_pal5(pot,23.46,ro,vo)
-        out+= (fp5[0]+0.88)**2./0.03**2.
-        out+= (fp5[1]+1.85)**2./0.05**2.
+        out+= (numpy.sqrt(2.*fp5[0]/fp5[1])-0.94)**2./0.05**2.
     # vc and ro measurements: vc=218 +/- 10 km/s, ro= 8.1 +/- 0.1 kpc
     out+= (vo-218.)**2./200.+(ro-8.1)**2./0.02
     return out
@@ -76,7 +76,7 @@ def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,fitvoro,
 def pdf_func(params,*args):
     return -like_func(params,*args)
 
-def setup_potential(params,c,fitc,dblexp,ro,vo,b=1.,pa=0.):
+def setup_potential(params,c,fitc,dblexp,ro,vo,fitvoro=False,b=1.,pa=0.):
     pot= [potential.PowerSphericalPotentialwCutoff(normalize=1.-params[0]-params[1],
                                                    alpha=1.8,rc=1.9/ro)]
     if dblexp:
@@ -92,7 +92,7 @@ def setup_potential(params,c,fitc,dblexp,ro,vo,b=1.,pa=0.):
     if fitc:
         pot.append(potential.TriaxialNFWPotential(\
                 normalize=params[1],a=numpy.exp(params[4])*_REFR0/ro,
-                c=params[7],b=b,pa=pa))
+                c=params[7+2*fitvoro],b=b,pa=pa))
     else:
         pot.append(potential.TriaxialNFWPotential(\
                 normalize=params[1],a=numpy.exp(params[4])*_REFR0/ro,
