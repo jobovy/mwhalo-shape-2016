@@ -69,8 +69,8 @@ def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,fitvoro,
         fp5= force_pal5(pot,23.46,ro,vo)
         out+= (fp5[0]+0.88)**2./0.03**2.
         out+= (fp5[1]+1.85)**2./0.05**2.
-    # vc and ro measurements: vc=218 +/- 10 km/s, ro= 8.2 +/- 0.1 kpc
-    out+= (vo-218.)**2./200.+(ro-8.2)**2./0.02
+    # vc and ro measurements: vc=218 +/- 10 km/s, ro= 8.1 +/- 0.1 kpc
+    out+= (vo-218.)**2./200.+(ro-8.1)**2./0.02
     return out
 
 def pdf_func(params,*args):
