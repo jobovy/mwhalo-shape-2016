@@ -1,3 +1,4 @@
+import sys
 import copy
 import signal
 import pickle
@@ -117,17 +118,19 @@ def predict_pal5obs(pot_params,c,b=1.,pa=0.,
     sdf_leading_varyc= []
     ii= 0
     ninterpcs= len(interpcs)
-    this_useTM= useTM
+    this_useTM= copy.deepcopy(useTM)
     this_nTrackChunks= nTrackChunks
+    ntries= 0
     while ii < ninterpcs:
         ic= interpcs[ii]
         pot= MWPotential2014Likelihood.setup_potential(pot_params,ic,
                                                        False,False,ro,vo,
                                                        b=b,pa=pa)
         success= True
+        wentIn= ntries != 0
         # Make sure this doesn't run forever
         signal.signal(signal.SIGALRM,timeout_handler)
-        signal.alarm(120)
+        signal.alarm(300)
         try:
             tsdf_trailing, tsdf_leading= setup_sdf(pot,prog,sigv[ii],td[ii],
                                                    ro,vo,multi=multi,
@@ -146,11 +149,22 @@ def predict_pal5obs(pot_params,c,b=1.,pa=0.,
             # Try again with TM
             this_useTM= True
             this_nTrackChunks= 21 # might as well
+
+            #wentIn= True
+            #print("Here",ntries,success)
+            #sys.stdout.flush()
+            
+            ntries+= 1
         else:
+            success= not this_useTM
+            #if wentIn:
+            #    print(success)
+            #    sys.stdout.flush()
             ii+= 1
             # reset
             this_useTM= useTM
             this_nTrackChunks= nTrackChunks
+            ntries= 0
             # Add to the list
             sdf_trailing_varyc.append(tsdf_trailing)
             sdf_leading_varyc.append(tsdf_leading)
@@ -161,7 +175,7 @@ def predict_pal5obs(pot_params,c,b=1.,pa=0.,
                 numpy.zeros((len(c),1001,2)),
                 numpy.zeros((len(c),1001,2)),
                 numpy.zeros((len(c))),
-                numpy.zeros((len(c))),[])
+                numpy.zeros((len(c))),[],success)
     # Compute the track properties for each model
     trackRADec_trailing= numpy.zeros((len(interpcs),
                                       sdf_trailing_varyc[0]\
@@ -199,9 +213,12 @@ def predict_pal5obs(pot_params,c,b=1.,pa=0.,
             sdf_trailing_varyc[ii].length(ang=True,coord='customra',
                                           threshold=0.3)
     if singlec:
+        #if wentIn:
+        #    print(success)
+        #    sys.stdout.flush()
         return (trackRADec_trailing,trackRADec_leading,
                 trackRAVlos_trailing,trackRAVlos_leading,
-                width,length,interpcs)
+                width,length,interpcs,success)
     # Interpolate; output grids
     trackRADec_trailing_out= numpy.zeros((len(c),sdf_trailing_varyc[0]\
                                               .nInterpolatedTrackChunks,2))
@@ -247,7 +264,7 @@ def predict_pal5obs(pot_params,c,b=1.,pa=0.,
     length_out= ip(c)
     return (trackRADec_trailing_out,trackRADec_leading_out,
             trackRAVlos_trailing_out,trackRAVlos_leading_out,
-            width_out,length_out,interpcs)
+            width_out,length_out,interpcs,success)
 
 def looks_funny(tsdf_trailing,tsdf_leading):
     radecs_trailing=\

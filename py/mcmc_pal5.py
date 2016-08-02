@@ -1,6 +1,7 @@
 ###############################################################################
 # mcmc_pal5.py: module to run MCMC analysis of the Pal 5 stream
 ###############################################################################
+import sys
 import os, os.path
 import copy
 import time
@@ -8,6 +9,7 @@ import pickle
 import csv
 from optparse import OptionParser
 import subprocess
+import warnings
 import numpy
 from scipy.misc import logsumexp
 import emcee
@@ -64,7 +66,7 @@ def load_samples(options):
     return s
 
 def find_starting_point(options,pot_params,dist,pmra,pmdec,sigv):
-    # First just compute the interpolation points, to adjust the width and length
+    # Find a decent starting point, useTM to speed this up, bc it doesn't matter much
     interpcs=[0.65,0.75,0.875,1.,1.125,1.25,1.5,1.65]
     cs= numpy.arange(0.7,1.61,0.01)
     pal5varyc_like= pal5_util.predict_pal5obs(pot_params,cs,
@@ -72,7 +74,7 @@ def find_starting_point(options,pot_params,dist,pmra,pmdec,sigv):
                                               sigv=sigv,td=options.td,
                                               ro=options.ro,vo=220.,
                                               interpk=1,
-                                              interpcs=interpcs,
+                                              interpcs=interpcs,useTM=True,
                                               trailing_only=True,verbose=False)
     pos_radec, rvel_ra= pal5_util.pal5_data()
     if options.fitsigma:
@@ -103,6 +105,8 @@ def find_starting_point(options,pot_params,dist,pmra,pmdec,sigv):
     return cs[numpy.argmax(lnlike)]
 
 def lnp(p,pot_params,options):
+    warnings.filterwarnings("ignore",
+                            message="Using C implementation to integrate orbits")
     #p=[c,vo/220,dist/22.,pmo_parallel,pmo_perp] and ln(sigv) if fitsigma
     c= p[0]
     vo= p[1]*pal5_util._REFV0
@@ -130,7 +134,8 @@ def lnp(p,pot_params,options):
                                               ro=options.ro,vo=vo,
                                               trailing_only=True,verbose=False,
                                               sigv=sigv,td=options.td,
-                                              nTrackChunks=21)
+                                              useTM=False,
+                                              nTrackChunks=8)
     pos_radec, rvel_ra= pal5_util.pal5_data()
     if options.fitsigma:
         lnlike= pal5_util.pal5_lnlike(pos_radec,rvel_ra,
@@ -141,7 +146,11 @@ def lnp(p,pot_params,options):
                                       pal5varyc_like[4],
                                       pal5varyc_like[5],
                                       pal5varyc_like[6])
-        return lnlike[0,0]+lnlike[0,2]\
+        if not pal5varyc_like[7]: addllnlike= -15. # penalize 
+        else: addllnlike= 0.
+        #print addllnlike, pal5varyc_like[7]
+        #sys.stdout.flush()
+        return lnlike[0,0]+lnlike[0,2]+addllnlike+\
             -0.5*(pmra+2.296)**2./0.186**2.-0.5*(pmdec+2.257)**2./0.181**2.
     # If not fitsigma, move the track up and down a little to simulate sig changes
     deco= numpy.linspace(-0.5,0.5,101)
@@ -178,7 +187,6 @@ if __name__ == '__main__':
         rndindx= numpy.random.permutation(pot_samples.shape[1])[options.pindx]
         pot_params= pot_samples[:,rndindx]
     print pot_params
-    lnp_func= lambda p: lnp(p,pot_params,options)
     nwalkers= 10+2*options.fitsigma
     # For a fiducial set of parameters, find a good fit to use as the starting 
     # point
@@ -188,7 +196,9 @@ if __name__ == '__main__':
         pmra= -2.296
         pmdec= -2.257
         dist= 23.2
-        cstart= find_starting_point(options,pot_params,dist,pmra,pmdec,0.4)
+        #cstart= find_starting_point(options,pot_params,dist,pmra,pmdec,0.4)
+        cstart= 1.
+        if cstart > 1.15: cstart= 1.15 # Higher c doesn't typically really work
         if options.fitsigma:
             start_params= numpy.array([cstart,1.,dist/22.,0.,0.,0.])
             step= numpy.array([0.05,0.05,0.05,0.05,0.01,0.05])
@@ -199,9 +209,9 @@ if __name__ == '__main__':
         while nn < nwalkers:
             all_start_params[nn]= start_params\
                 +numpy.random.normal(size=len(start_params))*step
-            start_lnprob0[nn]= lnp_func(all_start_params[nn])
-#            if start_lnprob0[nn] > -1000000.: 
-#                print all_start_params[nn], start_lnprob0[nn]
+            start_lnprob0[nn]= lnp(all_start_params[nn],pot_params,options)
+            if start_lnprob0[nn] > -1000000.: 
+                print all_start_params[nn], start_lnprob0[nn]
             if start_lnprob0[nn] > -1000000.: nn+= 1
     else:
         # Get the starting point from the output file
@@ -236,7 +246,8 @@ if __name__ == '__main__':
         outfile.flush()
     outwriter= csv.writer(outfile,delimiter=',')
     # Run MCMC
-    sampler= emcee.EnsembleSampler(nwalkers,all_start_params.shape[1],lnp_func,
+    sampler= emcee.EnsembleSampler(nwalkers,all_start_params.shape[1],
+                                   lnp,args=(pot_params,options),
                                    threads=options.multi)
     rstate0= numpy.random.mtrand.RandomState().get_state()
     start= time.time()
