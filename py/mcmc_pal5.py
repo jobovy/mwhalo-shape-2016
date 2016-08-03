@@ -23,7 +23,7 @@ def get_options():
                       dest="bf_b15",default=False,
                       help="If set, use the best-fit to the MWPotential2014 data")
     parser.add_option("--seed",dest='seed',default=1,type='int',
-                      help="seed for potential parameter selection and everything else")
+                      help="seed for everything except for potential")
     parser.add_option("--fitsigma",action="store_true", 
                       dest="fitsigma",default=False,
                       help="If set, fit for the velocity-dispersion parameter")
@@ -176,8 +176,8 @@ def lnp(p,pot_params,options):
 if __name__ == '__main__':
     parser= get_options()
     options,args= parser.parse_args()
-    # Set random seed
-    numpy.random.seed(options.seed)
+    # Set random seed for potential selection
+    numpy.random.seed(1)
     # Load potential parameters
     if options.bf_b15:
         pot_params= [0.60122692,0.36273147,-0.97591502,-3.34169377,
@@ -187,6 +187,8 @@ if __name__ == '__main__':
         rndindx= numpy.random.permutation(pot_samples.shape[1])[options.pindx]
         pot_params= pot_samples[:,rndindx]
     print pot_params
+    # Now set the seed for the MCMC
+    numpy.random.seed(options.seed)
     nwalkers= 10+2*options.fitsigma
     # For a fiducial set of parameters, find a good fit to use as the starting 
     # point
