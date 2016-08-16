@@ -112,6 +112,19 @@ def force_pal5(pot,dpal5,ro,vo):
             potential.evaluatephiforces(pot,R5/ro,Z5/ro,phi=p5,
                                         use_physical=True,ro=ro,vo=vo))
 
+def force_gd1(pot,ro,vo):
+    """Return the force at GD-1"""
+    # Just use R=12.5 kpc, Z= 6.675 kpc, phi=0
+    R1= 12.5
+    Z1= 6.675
+    p1= 0.
+    return (potential.evaluateRforces(pot,R1/ro,Z1/ro,phi=p1,
+                                      use_physical=True,ro=ro,vo=vo),
+            potential.evaluatezforces(pot,R1/ro,Z1/ro,phi=p1,
+                                      use_physical=True,ro=ro,vo=vo),
+            potential.evaluatephiforces(pot,R1/ro,Z1/ro,phi=p1,
+                                        use_physical=True,ro=ro,vo=vo))
+
 def mass60(pot,_REFR0,_REFV0):
     """The mass at 60 kpc in 10^11 msolar"""
     tR= 60./_REFR0
