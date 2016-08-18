@@ -227,7 +227,7 @@ def readClemens(dsinl=0.5/8.):
                         comments='#')
     glon= data[:,0]
     vterm= data[:,1]
-    #Remove l < 30 and l > 80
+    #Remove l < 40 and l > 80
     indx= (glon > 40.)*(glon < 80.)
     glon= glon[indx]
     vterm= vterm[indx]
@@ -248,8 +248,25 @@ def readMcClureGriffiths(dsinl=0.5/8.,bin=True):
                         comments='#')
     glon= data[:,0]
     vterm= data[:,1]
-    #Remove l > 330 and l > 80
+    #Remove l > 320 and l > 80
     indx= (glon < 320.)*(glon > 280.)
+    glon= glon[indx]
+    vterm= vterm[indx]
+    if bin:
+        #Bin in l=1 bins
+        glon, vterm= binlbins(glon,vterm,dl=1.)
+    #Calculate correlation matrix
+    singlon= numpy.sin(glon/180.*numpy.pi)
+    corr= calc_corr(singlon,dsinl)
+    return (glon,vterm,numpy.linalg.inv(corr))
+    
+def readMcClureGriffiths16(dsinl=0.5/8.,bin=True):
+    data= numpy.loadtxt('../mwpot14data/McClureGriffiths2016.dat',
+                        comments='#',delimiter='&')
+    glon= data[:,0]
+    vterm= data[:,1]
+    #Remove l < 30 and l > 80
+    indx= (glon > 40.)*(glon < 80.)
     glon= glon[indx]
     vterm= vterm[indx]
     if bin:
