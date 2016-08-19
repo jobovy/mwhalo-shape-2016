@@ -5,7 +5,7 @@ from galpy.util import bovy_plot, bovy_conversion, bovy_coords
 from matplotlib import pyplot
 _REFR0, _REFV0= 8., 220.
 def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,fitvoro,
-              dblexp,addpal5,ro,vo):
+              dblexp,addpal5,addgd1,ro,vo):
     #Check ranges
     if params[0] < 0. or params[0] > 1.: return numpy.finfo(numpy.dtype(numpy.float64)).max
     if params[1] < 0. or params[1] > 1.: return numpy.finfo(numpy.dtype(numpy.float64)).max
@@ -66,9 +66,16 @@ def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,fitvoro,
     out+= 0.5*(mass60(pot,ro,vo)-4.)**2./0.7**2.
     #Pal5
     if addpal5:
-        # q = 0.94 +/- 0.05
+        # q = 0.94 +/- 0.05, [FR+0.8]+[FZ+1.82] = -0.12 +/- 0.35
         fp5= force_pal5(pot,23.46,ro,vo)
         out+= (numpy.sqrt(2.*fp5[0]/fp5[1])-0.94)**2./0.05**2.
+        out+= ((fp5[0]+0.8)+(fp5[1]+1.82)+0.12)**2./0.35**2.
+    #GD-1
+    if addgd1:
+        # q = 0.96 +/- 0.03, [FR+0.XX]+[FZ+X.XX] = XXX
+        fg1= force_gd1(pot,ro,vo)
+        out+= (numpy.sqrt(6.675/12.5*fg1[0]/fg1[1])-0.96)**2./0.03**2.
+        out+= ((fg1[0]+0.8)+(fg1[1]+1.82)+0.12)**2./0.35**2.
     # vc and ro measurements: vc=218 +/- 10 km/s, ro= 8.1 +/- 0.1 kpc
     out+= (vo-218.)**2./200.+(ro-8.1)**2./0.02
     return out
