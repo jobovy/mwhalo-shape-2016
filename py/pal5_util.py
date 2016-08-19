@@ -52,7 +52,7 @@ def timeout_handler(signum, frame):
     raise Exception("Calculation timed-out")
 
 def predict_pal5obs(pot_params,c,b=1.,pa=0.,
-                    sigv=0.4,td=5.,
+                    sigv=0.2,td=10.,
                     dist=23.2,pmra=-2.296,pmdec=-2.257,vlos=-58.7,
                     ro=_REFR0,vo=_REFV0,
                     singlec=False,
