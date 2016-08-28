@@ -66,16 +66,16 @@ def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,fitvoro,
     out+= 0.5*(mass60(pot,ro,vo)-4.)**2./0.7**2.
     #Pal5
     if addpal5:
-        # q = 0.94 +/- 0.05, [FR+0.8]+[FZ+1.82] = -0.12 +/- 0.35
+        # q = 0.94 +/- 0.05 + add'l
         fp5= force_pal5(pot,23.46,ro,vo)
-        out+= (numpy.sqrt(2.*fp5[0]/fp5[1])-0.94)**2./0.05**2.
-        out+= ((fp5[0]+0.8)+(fp5[1]+1.82)+0.12)**2./0.35**2.
+        out+= 0.5*(numpy.sqrt(2.*fp5[0]/fp5[1])-0.94)**2./0.05**2.
+        out+= 0.5*(0.94**2.*(fp5[0]+0.8)+2.*(fp5[1]+1.82)+0.2)**2./0.6**2.
     #GD-1
     if addgd1:
-        # q = 0.96 +/- 0.03, [FR+0.XX]+[FZ+X.XX] = XXX
+        # q = 0.95 +/- 0.04 + add'l
         fg1= force_gd1(pot,ro,vo)
-        out+= (numpy.sqrt(6.675/12.5*fg1[0]/fg1[1])-0.96)**2./0.03**2.
-        out+= ((fg1[0]+0.8)+(fg1[1]+1.82)+0.12)**2./0.35**2.
+        out+= 0.5*(numpy.sqrt(6.675/12.5*fg1[0]/fg1[1])-0.95)**2./0.04**2.
+        out+= 0.5*(0.95**2.*(fg1[0]+2.51)+6.675/12.5*(fg1[1]+1.47)+0.05)**2./0.3**2.
     # vc and ro measurements: vc=218 +/- 10 km/s, ro= 8.1 +/- 0.1 kpc
     out+= (vo-218.)**2./200.+(ro-8.1)**2./0.02
     return out
