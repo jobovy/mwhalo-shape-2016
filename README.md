@@ -38,6 +38,11 @@ potential families is performed by the [mcmc_pal5.py](py/mcmc_pal5.py)
 code. The results of the MCMC (Figures 3, 4, and 5 in the paper) are
 analyzed in this notebook.
 
+The MCMC analyses were run with commands like
+```
+python mcmc_pal5.py -i 0 -o ../pal5_mcmc/mwpot14-fitsigma-0.dat --dt=600. --td=10. --fitsigma -m 6
+```
+
 ## 3. [gd1Modeling.ipynb](py/gd1Modeling.ipynb)
 
 (render this notebook on [nbviewer](http://nbviewer.ipython.org/github/jobovy/mwhalo-shape-2016/blob/master/py/gd1Modeling.ipynb), where you can toggle the code)
@@ -54,3 +59,7 @@ different because of the different parameterization of the progenitor
 and stream properties. The results of the MCMC (Figures 7 and 8 in the
 paper) are analyzed in this notebook.
 
+The MCMC analyses were run with commands like
+```
+python mcmc_gd1.py -i 0 -o ../gd1_mcmc/mwpot14-0.dat --dt=1440. --td=10. -m 7
+```
