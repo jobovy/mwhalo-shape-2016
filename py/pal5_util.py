@@ -48,6 +48,21 @@ def width_trailing(sdf):
 #    return 2.355*60.*ws
     return 2.355*60.*numpy.mean(ws)
 
+def vdisp_trailing(sdf):
+    """Return the velocity dispersion in km/s for the trailing tail"""
+    # Go out to RA=245 deg
+    trackRADec_trailing=\
+        bovy_coords.lb_to_radec(sdf._interpolatedObsTrackLB[:,0],
+                                sdf._interpolatedObsTrackLB[:,1],
+                                degree=True)
+    cindx= range(len(trackRADec_trailing))[\
+        numpy.argmin(numpy.fabs(trackRADec_trailing[:,0]-245.))]
+    ws= numpy.zeros(cindx)
+    for ii,cc in enumerate(range(1,cindx+1)):
+        xy= [sdf._interpolatedObsTrackLB[cc,0],None,None,None,None,None]
+        ws[ii]= numpy.sqrt(sdf.gaussApprox(xy=xy,lb=True,cindx=cc)[1][2,2])
+    return numpy.mean(ws)
+
 def timeout_handler(signum, frame):
     raise Exception("Calculation timed-out")
 
