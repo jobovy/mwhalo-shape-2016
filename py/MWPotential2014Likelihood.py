@@ -1,11 +1,12 @@
 import numpy
 from scipy import integrate
+import astropy.units as u
 from galpy import potential
 from galpy.util import bovy_plot, bovy_conversion, bovy_coords
 from matplotlib import pyplot
 _REFR0, _REFV0= 8., 220.
 def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,fitvoro,
-              dblexp,addpal5,addgd1,ro,vo):
+              dblexp,addpal5,addgd1,ro,vo,addgas):
     #Check ranges
     if params[0] < 0. or params[0] > 1.: return numpy.finfo(numpy.dtype(numpy.float64)).max
     if params[1] < 0. or params[1] > 1.: return numpy.finfo(numpy.dtype(numpy.float64)).max
@@ -23,7 +24,8 @@ def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,fitvoro,
     if fitvoro:
         ro, vo= _REFR0*params[8], _REFV0*params[7]
     #Setup potential
-    pot= setup_potential(params,c,fitc,dblexp,ro,vo,fitvoro=fitvoro)
+    pot= setup_potential(params,c,fitc,dblexp,ro,vo,fitvoro=fitvoro,
+                         addgas=addgas)
     #Calculate model surface density at surfrs
     modelkzs= numpy.empty_like(surfrs)
     for ii in range(len(surfrs)):
@@ -78,19 +80,40 @@ def like_func(params,c,surfrs,kzs,kzerrs,termdata,termsigma,fitc,fitvoro,
         out+= 0.5*(0.95**2.*(fg1[0]+2.51)+6.675/12.5*(fg1[1]+1.47)+0.05)**2./0.3**2.
     # vc and ro measurements: vc=218 +/- 10 km/s, ro= 8.1 +/- 0.1 kpc
     out+= (vo-218.)**2./200.+(ro-8.1)**2./0.02
-    return out
+    if numpy.isnan(out): 
+        return numpy.finfo(numpy.dtype(numpy.float64)).max
+    else:
+        return out
 
 def pdf_func(params,*args):
     return -like_func(params,*args)
 
-def setup_potential(params,c,fitc,dblexp,ro,vo,fitvoro=False,b=1.,pa=0.):
+def setup_potential(params,c,fitc,dblexp,ro,vo,fitvoro=False,b=1.,pa=0.,
+                    addgas=False):
     pot= [potential.PowerSphericalPotentialwCutoff(normalize=1.-params[0]-params[1],
                                                    alpha=1.8,rc=1.9/ro)]
     if dblexp:
-        pot.append(\
-            potential.DoubleExponentialDiskPotential(\
-                normalize=params[0],hr=numpy.exp(params[2])*_REFR0/ro,
-                hz=numpy.exp(params[3])*_REFR0/ro))
+        if addgas:
+            # add 13 Msun/pc^2 
+            gp= potential.DoubleExponentialDiskPotential(\
+                amp=0.03333*u.Msun/u.pc**3\
+                    *numpy.exp(ro/2./numpy.exp(params[2])/_REFR0),
+                hz=150.*u.pc,
+                hr=2.*numpy.exp(params[2])*_REFR0/ro,
+                ro=ro,vo=vo)
+            gp.turn_physical_off()
+            gprf= gp.Rforce(1.,0.)
+            dpf= params[0]+gprf
+            if dpf < 0.: dpf= 0.
+            pot.append(\
+                potential.DoubleExponentialDiskPotential(\
+                    normalize=dpf,hr=numpy.exp(params[2])*_REFR0/ro,
+                    hz=numpy.exp(params[3])*_REFR0/ro))
+        else:
+            pot.append(\
+                potential.DoubleExponentialDiskPotential(\
+                    normalize=params[0],hr=numpy.exp(params[2])*_REFR0/ro,
+                    hz=numpy.exp(params[3])*_REFR0/ro))
     else:
         pot.append(\
             potential.MiyamotoNagaiPotential(normalize=params[0],
@@ -104,6 +127,8 @@ def setup_potential(params,c,fitc,dblexp,ro,vo,fitvoro=False,b=1.,pa=0.):
         pot.append(potential.TriaxialNFWPotential(\
                 normalize=params[1],a=numpy.exp(params[4])*_REFR0/ro,
                 c=c,b=b,pa=pa))
+    if addgas:
+        pot.append(gp) # make sure it's the last
     return pot
 
 def force_pal5(pot,dpal5,ro,vo):
@@ -147,7 +172,10 @@ def bulge_dispersion(pot,_REFR0,_REFV0):
 
 def visible_dens(pot,_REFR0,_REFV0,r=1.):
     """The visible surface density at 8 kpc from the center"""
-    return 2.*integrate.quad((lambda zz: potential.evaluateDensities(pot[1],r,zz,phi=0.)),0.,2.)[0]*bovy_conversion.surfdens_in_msolpc2(_REFV0,_REFR0)
+    if len(pot) == 4:
+        return 2.*(integrate.quad((lambda zz: potential.evaluateDensities(pot[1],r,zz,phi=0.)),0.,2.)[0]+integrate.quad((lambda zz: potential.evaluateDensities(pot[3],r,zz,phi=0.)),0.,2.)[0])*bovy_conversion.surfdens_in_msolpc2(_REFV0,_REFR0)
+    else:
+        return 2.*integrate.quad((lambda zz: potential.evaluateDensities(pot[1],r,zz,phi=0.)),0.,2.)[0]*bovy_conversion.surfdens_in_msolpc2(_REFV0,_REFR0)
 
 def logprior_dlnvcdlnr(dlnvcdlnr):
     sb= 0.04
