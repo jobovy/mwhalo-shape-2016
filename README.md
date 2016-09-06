@@ -1,5 +1,5 @@
 # mwhalo-shape-2016
-Investigation into the shape of the inner DM halo with stream and disk-star kinematics.
+Investigation into the shape of the inner DM halo with stream kinematics.
 
 This repository contains the code associated with the paper Bovy,
 Bahmanyar, Fritz, \& Kallivayalil (2016), which you should cite if you
